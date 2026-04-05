@@ -4,10 +4,13 @@ Notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.1](https://github.com/dathbe/MMM-MyScoreboard/compare/v4.18.0...v4.18.1) - 2026-04-05
+
+- **BUG FIX**: Remove CPL league because custom provider file is not currently working
+
 ## [4.18.0](https://github.com/dathbe/MMM-MyScoreboard/compare/v4.17.0...v4.18.0) - 2026-04-05
 
 - **NEW FEATURE**: Added config option to display fireworks animation when followed team scores
-- **BUG FIX**: Remove CPL league because custom provider file is not currently working
 - Add broadcast logos to the display when baseball detail is shown
 - Update dependencies
 
