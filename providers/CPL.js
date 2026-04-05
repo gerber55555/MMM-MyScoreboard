@@ -2,7 +2,7 @@ const moment = require('moment-timezone')
 const Log = require('logger')
 
 const SEASON_ID = 'cpl::Football_Season::fd43e1d61dfe4396a7356bc432de0007'
-const MATCHES_URL = `https://api-sdp.canpl.ca/v1/cpl/football/seasons/${encodeURIComponent(SEASON_ID)}/matches?locale=en-US`
+const MATCHES_URL = `https://api-sdp.cplsoccer.com/v1/cpl/football/seasons/${encodeURIComponent(SEASON_ID)}/matches?locale=en-US`
 
 module.exports = {
   PROVIDER_NAME: 'CPL',
