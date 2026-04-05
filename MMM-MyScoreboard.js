@@ -1337,7 +1337,6 @@ Module.register('MMM-MyScoreboard', {
         // Log.debug(`${this.logoIndex} <- logoIndex2`)
         logos[(this.logoIndex) % logos.length].style.display = 'flex'
         // logos[0].style.display = "block"
-        // logos[moment().unix() % logos.length].style.display = "block"
       }
     }
     // Log.debug(`${this.logoIndex} <- logoIndex3`)
