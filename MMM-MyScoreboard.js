@@ -38,6 +38,7 @@ Module.register('MMM-MyScoreboard', {
     baseballDetailInterval: 15,
     baseballDetailViewOverride: true,
     showScoreAnimation: false,
+    showUpcomingGames: false,
     sports: [
       {
         league: 'NHL',
@@ -909,6 +910,25 @@ Module.register('MMM-MyScoreboard', {
       }
     }
 
+    // Upcoming Games section — one row per followed team whose today slate is done
+    if (self.config.showUpcomingGames) {
+      var upcomingSorted = this.sortDict(self.upcomingGames)
+      for (const [sport, upcoming] of Object.entries(upcomingSorted)) {
+        if (!upcoming.games || upcoming.games.length === 0) continue
+        if (self.config.showLeagueSeparators) {
+          var upcomingSeparator = document.createElement('div')
+          upcomingSeparator.classList.add('league-separator', 'upcoming-separator')
+          upcomingSeparator.innerHTML = '<span>' + sport + ' - Upcoming</span>'
+          wrapper.appendChild(upcomingSeparator)
+        }
+        upcoming.games.forEach(function (game, gidx) {
+          var boxScore = self.boxScoreFactory(upcoming.league, game, sport)
+          boxScore.classList.add(gidx % 2 == 0 ? 'odd' : 'even')
+          wrapper.appendChild(boxScore)
+        })
+      }
+    }
+
     /*
       We're using the lockString parameter to play nicely with
       other modules that attempt to show or hide this module,
@@ -944,6 +964,10 @@ Module.register('MMM-MyScoreboard', {
       gameDivs += this.sportsDataYd[sport]['scores'].length
       // if (this.config.showLeagueSeparators) separatorDivs++;
     })
+    Object.keys(this.upcomingGames).forEach((label) => {
+      var u = this.upcomingGames[label]
+      if (u && u.games) gameDivs += u.games.length
+    })
     // return (gameDivs + separatorDivs);
     return gameDivs
   },
@@ -968,6 +992,11 @@ Module.register('MMM-MyScoreboard', {
       }
       if (payload.noGamesToday === true) {
         this.noGamesToday[payload.index] = moment().add(this.config.debugHours, 'hours').add(this.config.debugMinutes, 'minutes').format('YYYY-MM-DD')
+      }
+
+      // Trigger upcoming-games request for eligible followed teams
+      if (this.config.showUpcomingGames) {
+        this.maybeRequestUpcoming(payload.label, payload.index)
       }
       if (moment().add(this.config.debugHours, 'hours').add(this.config.debugMinutes, 'minutes').hour() >= this.config.rolloverHours) {
         this.sportsDataYd = {}
@@ -1023,6 +1052,25 @@ Module.register('MMM-MyScoreboard', {
       }
       this.ydLoaded[payload.index] = { loaded: stopGrabbingYD, date: moment().add(this.config.debugHours, 'hours').add(this.config.debugMinutes, 'minutes').format('YYYY-MM-DD') }
     }
+    else if (notification === 'MMM-MYSCOREBOARD-UPCOMING-UPDATE' && payload.instanceId == this.identifier) {
+      var followed = this.followedTeams[payload.label] || []
+      var ordered = []
+      for (var fi = 0; fi < followed.length; fi++) {
+        var t = followed[fi]
+        var g = payload.games[t]
+        if (g) ordered.push(g)
+      }
+      // Sort by game start time
+      ordered.sort(function (a, b) {
+        return moment(a.gameDate).diff(moment(b.gameDate))
+      })
+
+      var newUpcoming = { games: ordered, league: payload.league, sortIdx: payload.sortIdx }
+      var oldUpcoming = this.upcomingGames[payload.label]
+      var changed = !oldUpcoming || JSON.stringify(oldUpcoming.games) !== JSON.stringify(newUpcoming.games)
+      this.upcomingGames[payload.label] = newUpcoming
+      if (changed) this.updateDom()
+    }
     else if (notification === 'MMM-MYSCOREBOARD-LOCAL-LOGO-LIST' && payload.instanceId == this.identifier) {
       this.localLogos = payload.logos
       this.localLogosCustom = payload.logosCustom
@@ -1047,6 +1095,90 @@ Module.register('MMM-MyScoreboard', {
         self.getScores()
       }, 2 * 60 * 1000)
     }
+  },
+
+  // Return teams (from followed list for this label) that are eligible for
+  // the Upcoming Games section: either no game today, or all of today's games
+  // for that team are FINAL. MLB doubleheaders are handled because we check
+  // ALL of today's games containing the team, not just one.
+  getEligibleUpcomingTeams: function (label) {
+    var followed = this.followedTeams[label]
+    if (!followed || followed.length === 0) return []
+    var labelData = this.sportsData[label]
+    var todayGames = (labelData && labelData.scores) ? labelData.scores : []
+
+    var eligible = []
+    for (var i = 0; i < followed.length; i++) {
+      var team = followed[i]
+      if (team === '@T25') continue // group marker, not a real team
+      var teamGamesToday = todayGames.filter(function (g) {
+        return g.hTeam === team || g.vTeam === team
+      })
+      if (teamGamesToday.length === 0) {
+        eligible.push(team)
+        continue
+      }
+      var allFinal = teamGamesToday.every(function (g) {
+        return g.gameMode === 2
+      })
+      if (allFinal) eligible.push(team)
+    }
+    return eligible
+  },
+
+  maybeRequestUpcoming: function (label, sortIdx) {
+    // Skip during the rollover window — focus stays on yesterday's finals.
+    var nowHour = moment().add(this.config.debugHours, 'hours').add(this.config.debugMinutes, 'minutes').hour()
+    if (nowHour < this.config.rolloverHours && !this.config.alwaysShowToday) {
+      return
+    }
+
+    var sport = null
+    for (var si = 0; si < this.config.sports.length; si++) {
+      var s = this.config.sports[si]
+      if ((s.label || s.league) === label) {
+        sport = s
+        break
+      }
+    }
+    if (!sport) return
+
+    // Skip non-ESPN providers for v1; node_helper will respond with unsupported:true anyway,
+    // but this saves a socket round-trip.
+    var provider = this.supportedLeagues[sport.league] && this.supportedLeagues[sport.league].provider
+    if (provider !== 'ESPN') return
+
+    var eligible = this.getEligibleUpcomingTeams(label)
+    if (eligible.length === 0) {
+      // Nothing to show — clear any prior upcoming for this label
+      if (this.upcomingGames[label]) {
+        delete this.upcomingGames[label]
+        this.updateDom()
+      }
+      return
+    }
+
+    // Debounce: don't re-request same team set within 30 minutes
+    var THROTTLE_MS = 30 * 60 * 1000
+    var now = Date.now()
+    var lastAt = this.upcomingRequestedAt[label] || 0
+    var lastTeams = this.upcomingRequestedTeams[label] || ''
+    var teamsSig = eligible.slice().sort().join(',')
+    if (teamsSig === lastTeams && (now - lastAt) < THROTTLE_MS) return
+
+    this.upcomingRequestedAt[label] = now
+    this.upcomingRequestedTeams[label] = teamsSig
+
+    this.sendSocketNotification('MMM-MYSCOREBOARD-GET-UPCOMING', {
+      instanceId: this.identifier,
+      label: label,
+      league: sport.league,
+      provider: provider,
+      sortIdx: sortIdx,
+      teams: eligible,
+      debugHours: this.config.debugHours,
+      debugMinutes: this.config.debugMinutes,
+    })
   },
 
   detectScoreChanges: function (label, oldScores, newScores) {
@@ -1092,11 +1224,11 @@ Module.register('MMM-MyScoreboard', {
     var colors = [
       ['#ff4444', '#ffaa00', '#44ff44', '#4488ff', '#ff44ff', '#ffdd44'],
       ['#ffd700', '#ffaa00', '#fff44f', '#ff8844', '#44ffdd', '#aa44ff'],
-      ['#ff6644', '#44ddff', '#ffff44', '#44ff88', '#ff4488', '#ffaa44']
+      ['#ff6644', '#44ddff', '#ffff44', '#44ff88', '#ff4488', '#ffaa44'],
     ]
     var scoreEls = [
       boxScore.querySelector('.score.visitor'),
-      boxScore.querySelector('.score.home')
+      boxScore.querySelector('.score.home'),
     ]
 
     // Spawn 8 fireworks staggered over 8 seconds
@@ -1169,6 +1301,9 @@ Module.register('MMM-MyScoreboard', {
     this.sportsData = {}
     this.sportsDataYd = {}
     this.scoreAnimations = {}
+    this.upcomingGames = {}
+    this.upcomingRequestedAt = {}
+    this.upcomingRequestedTeams = {}
 
     // Build a map of followed teams per label for score animations
     this.followedTeams = {}
