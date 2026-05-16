@@ -56,15 +56,15 @@
   },
   "license": "MIT",
   "dependencies": {
-    "moment-timezone": "^0.6.1",
+    "moment-timezone": "^0.6.2",
     "temporal-polyfill": "^0.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.48.0",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "eslint": "^10.2.0",
-    "globals": "^17.4.0",
+    "eslint": "^10.4.0",
+    "globals": "^17.6.0",
     "linkedom": "^0.18.0"
   }
 }
