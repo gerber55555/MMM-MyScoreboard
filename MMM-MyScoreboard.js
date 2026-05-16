@@ -1069,7 +1069,21 @@ Module.register('MMM-MyScoreboard', {
       var oldUpcoming = this.upcomingGames[payload.label]
       var changed = !oldUpcoming || JSON.stringify(oldUpcoming.games) !== JSON.stringify(newUpcoming.games)
       this.upcomingGames[payload.label] = newUpcoming
-      if (changed) this.updateDom()
+      if (changed) {
+        // A score animation triggered by the immediately-prior SCORE-UPDATE
+        // is still playing; rebuilding the DOM now would cut it off.
+        var delay = this.animationBlockUntil - Date.now()
+        if (delay > 0) {
+          if (this.upcomingDeferredTimer) clearTimeout(this.upcomingDeferredTimer)
+          this.upcomingDeferredTimer = setTimeout(function () {
+            self.upcomingDeferredTimer = null
+            self.updateDom()
+          }, delay)
+        }
+        else {
+          this.updateDom()
+        }
+      }
     }
     else if (notification === 'MMM-MYSCOREBOARD-LOCAL-LOGO-LIST' && payload.instanceId == this.identifier) {
       this.localLogos = payload.logos
@@ -1204,9 +1218,11 @@ Module.register('MMM-MyScoreboard', {
       // Check if followed team scored
       if (hIsFollowed && newGame.hScore > oldGame.hScore) {
         this.scoreAnimations[gameKey] = { type: 'score', team: 'home' }
+        this.animationBlockUntil = Math.max(this.animationBlockUntil, Date.now() + 4000)
       }
       else if (vIsFollowed && newGame.vScore > oldGame.vScore) {
         this.scoreAnimations[gameKey] = { type: 'score', team: 'visitor' }
+        this.animationBlockUntil = Math.max(this.animationBlockUntil, Date.now() + 4000)
       }
 
       // Check if game just ended and followed team won
@@ -1215,6 +1231,10 @@ Module.register('MMM-MyScoreboard', {
           || (vIsFollowed && newGame.vScore > newGame.hScore)
         if (followedWon) {
           this.scoreAnimations[gameKey] = { type: 'win' }
+          // winGlow CSS animation runs 8s; hold off any non-animation DOM
+          // rebuild (e.g. the upcoming-games update that often arrives just
+          // after a final) until it has visibly finished.
+          this.animationBlockUntil = Math.max(this.animationBlockUntil, Date.now() + 8500)
         }
       }
     }
@@ -1261,7 +1281,9 @@ Module.register('MMM-MyScoreboard', {
           fw.style.backgroundRepeat = 'no-repeat'
           scoreEl.appendChild(fw)
           // Clean up after animation
-          setTimeout(function () { fw.remove() }, 3500)
+          setTimeout(function () {
+            fw.remove()
+          }, 3500)
         }, idx * 1000)
       })(i)
     }
@@ -1301,6 +1323,7 @@ Module.register('MMM-MyScoreboard', {
     this.sportsData = {}
     this.sportsDataYd = {}
     this.scoreAnimations = {}
+    this.animationBlockUntil = 0
     this.upcomingGames = {}
     this.upcomingRequestedAt = {}
     this.upcomingRequestedTeams = {}

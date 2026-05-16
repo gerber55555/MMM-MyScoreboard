@@ -1883,6 +1883,14 @@ Please create all PRs against the development branch for testing and eventual me
 
 - `node --run lint` - Run linting checks.
 - `node --run lint:fix` - Fix automatically fixable linting errors.
+- `node --run test:unit` - Run unit tests (`node:test`, no external services).
+- `node --run test:e2e:install` - One-time: clone MagicMirror + install Playwright Chromium for the end-to-end matrix.
+- `node --run test:e2e` - Run the curated Playwright matrix (25 scenarios, ~1–2 min). Screenshots land in `test-results/screenshots/`.
+- `node --run test:e2e:pairwise` - Algorithmic pairwise matrix (~15 scenarios) covering every pair of parameter values.
+- `node --run test:e2e:full` - Exhaustive cartesian matrix (~224 scenarios, ~10 min). Reserve for major releases.
+- `node --run test` - Run lint + unit + e2e (full suite).
+
+See `tests/README.md` for details on what the suite covers and how to add new scenarios.
 
 ## License
 
